@@ -1,0 +1,320 @@
+---
+title: "Germán Germán De Souza Individual Assignment SNA"
+output: html_notebook
+---
+
+On this first assignment, applying the basic functions of the Igraph package is required. The following datasets are going to be used:
+
+* Actors dataset - undirected graph - : For the 2005 Graph Drawing conference a data set was provided of the IMDB movie database. We will use a reduced version of this dataset, which derived all actor-actor collaboration edges where the actors co-starred in at least 2 movies together between 1995 and 2004. 
+
+
+You have to complete the code chunks in this document but also analyze the results, extract insights and answer the short questions. Fill the CSV attached with your answers, sometimes just the number is enough, some others just a small sentence. Remember to change the header with your email.
+
+In your submission please upload both the R Markdown and the CSV with the solutions.
+
+
+# Loading data
+
+In this section, the goal is loading the datasets given, building the graph and analyzing basics metrics. Include the edge or node attributes you consider.
+
+Describe the values provided by summary function on the graph object.
+
+*1) How many nodes are there?* 
+<center>
+There are **`r toString(n_keys)` nodes** in the data that we have imported
+</center>
+*2) How many edges are there?* 
+<center>
+There are **`r toString(n_edges)` edges** in the data that we have imported
+</center>
+
+```{r, echo=FALSE, results='hide'}
+library(igraph)
+library(psych)
+library(dplyr)
+library(kableExtra)
+library(lemon)
+library(qdapTools)
+library(ggplot2)
+library(tidyr)
+library(geomnet)
+library(ggplot2)
+
+actors_keys <- read.table("/Users/germandesouza/Desktop/SNA_Individual_Assignment/imdb_actors_key.tsv", sep = "\t", header = TRUE)
+actors_edges <- read.table("/Users/germandesouza/Desktop/SNA_Individual_Assignment/imdb_actor_edges.tsv", sep = "\t", header = TRUE)
+
+n_keys <- (sum(describe(actors_keys)[,2]))/nrow(describe(actors_keys))
+n_edges <- (sum(describe(actors_edges)[,2]))/nrow(describe(actors_edges))
+```
+
+
+# Degree distribution
+
+Analyse the degree distribution. Compute the total degree distribution.
+
+*3) How does this distributions look like?*
+
+As we can see in the representations below, the cumulative frequency is highly skewed to the right. This means that there are various actors with low number of degrees and few actors with high degrees. It is so skewed that with the degree range from 0-200 we can identify the 98,2% of all actors within the dataset.
+
+```{r, fig.align='center', echo=FALSE}
+graph_actors_edges <- graph_from_data_frame(d=actors_edges, directed = FALSE)
+graph_actors_keys <- graph_from_data_frame(d=actors_keys, directed = FALSE)
+
+deg.dist <- degree_distribution(graph_actors_edges, cumulative = TRUE, mode="all")
+deg <- degree(graph_actors_edges, mode="all")
+
+plot(x=0:max(deg), y=1-deg.dist, col="blue", xlab="Degree", ylab="Cumulative Frequency", main="Total Degree Distribution For Actors Dataset (Cumulative Frequency)")
+hist(deg, labels=TRUE, ylim=c(0,15000), main="Histogram: Degree Distribution Actors Dataset", xlab="Degree", ylab="Frequency")
+```
+
+*4) What is the maximum degree?*
+<center>
+The number of maximum degrees is **`r max(deg)`** with user id **`r name_max_degree[,"id"]`** and name **`r name_max_degree[1,"name"]`**
+</center>
+
+*5) What is the minum degree?*
+<center>
+The number of minimum degrees is **`r min(deg)`** with **`r num_min_degree[1,"n"]`** user id's
+</center>
+
+```{r, echo=FALSE, results='hide'}
+id_max_degree <- V(graph_actors_edges)$name[degree(graph_actors_edges)==max(degree(graph_actors_edges))]
+name_max_degree <- actors_keys[id_max_degree==actors_keys$id,]
+
+num_min_degree <- as.data.frame(V(graph_actors_edges)$name[degree(graph_actors_edges)==min(degree(graph_actors_edges))]) %>% count()
+```
+
+# Network Diameter and Average Path Length
+
+*6) What is the diameter of the graph?*
+<center>
+The graph's diameter is **`r diameter`**
+</center>
+*7) What is the avg path length of the graph?*
+<center>
+The graph's average path length is **`r avg_path`**
+</center>
+
+```{r, echo=FALSE, results='hide'}
+diameter <- diameter(graph_actors_edges, directed=FALSE)
+avg_path <- mean_distance(graph_actors_edges, directed=FALSE)
+```
+
+
+# Node importance: Centrality measures
+
+Obtain the distribution of the number of movies made by an actor and the number of genres in which an actor starred in. It may be useful to analyze and discuss the results to be obtained in the following exercises.
+
+```{r, fig.align='center', echo=FALSE, results='hide'}
+test <- actors_keys
+test <- test %>% transmute(genres=strsplit(as.character(genres), ",")) %>% unnest(genres) %>% separate(genres, into= c("genre","number"), sep=":")
+test$number <- as.numeric(test$number)
+test <- test %>% group_by(genre) %>% summarise(across(everything(),sum))
+test$genre[15] <- "Unknown"
+
+num_genres_per_actor <- actors_keys %>% select(main_genre) %>% count(main_genre, sort=T)
+
+ggplot(test) + geom_bar(aes(x=reorder(genre,-number), y=number), stat="identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(x="Main Genres", y="Actor Count", title = "Distribution on genres in which actors starred in")
+ggplot(num_genres_per_actor,aes(x=reorder(main_genre,-n),y=n)) + geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(x="Number of films", y="Actor Count", title = "Number of movies made by an actor")
+```
+
+Obtain three vectors with the degree, betweeness and closeness for each vertex of the actors' graph.
+
+```{r, render=lemon_print}
+knit_print.data.frame <- lemon_print
+#degree dataframe
+degree_vect <- as.data.frame(deg)
+degree_vect <- cbind(id = rownames(degree_vect), degree_vect)
+rownames(degree_vect) <- 1:nrow(degree_vect)
+degree_vect <- degree_vect %>% rename(degree=deg)
+
+#betweeness dataframe
+betw <- betweenness(graph_actors_edges)
+betweeness_vect <- as.data.frame(betw)
+betweeness_vect <- cbind(id = rownames(betweeness_vect), betweeness_vect)
+rownames(betweeness_vect) <- 1:nrow(betweeness_vect)
+betweeness_vect <- betweeness_vect %>% rename(betweeness=betw)
+
+#closeness dataframe
+close <- closeness(graph_actors_edges, mode="all", normalized=T)
+closeness_vect <- as.data.frame(close)
+closeness_vect <- cbind(id = rownames(closeness_vect), closeness_vect)
+rownames(closeness_vect) <- 1:nrow(closeness_vect)
+closeness_vect <- closeness_vect %>% rename(closeness=close)
+
+#Number of genres in which the actor has participated in
+test_2 <- actors_keys
+test_2 <- test_2 %>% transmute(id,genres=strsplit(as.character(genres), ",")) %>% unnest(genres) %>% separate(genres, into= c("genre","number"), sep=":")
+test_2 <- test_2 %>% select(id,genre) %>% count(id)
+genres_featured_actor <- test_2 %>% rename(genres_featured=n)
+
+#Merge all dataframes into one
+df_merge <- merge(degree_vect,betweeness_vect, by.x="id", by.y="id", all.x=T)
+df_merge <- merge(df_merge,closeness_vect, by.x="id", by.y="id", all.x=T)
+df_merge <- merge(df_merge,actors_keys, by.x="id", by.y="id", all.x=T)
+df_merge <- merge(df_merge,genres_featured_actor, by.x="id", by.y="id", all.x=T)
+
+#Create clean dataframe
+ultimate_dataframe <- df_merge %>% select(id,name,degree,betweeness,closeness,movies_95_04,genres_featured,main_genre) %>% rename(total_movies_featured=movies_95_04,number_different_genres_participated=genres_featured)
+head(ultimate_dataframe)
+```
+
+
+Obtain the list of the 20 actors with the largest degree centrality. It can be useful to show a list with the degree, the name of the actor, the number of movies, the main genre, and the number of genres in which the actor has participated.
+
+*8) Who is the actor with highest degree centrality?*
+<center>
+The actor with the highest degree centrality is **`r top_degree[1,2]`**
+</center>
+
+*9) How do you explain the high degree of the top-20 list??*
+
+**We can infer by the data below that actors belonging to the Adult "main genre" have a high correlation to the movies that they feature. Maybe because Adult genre is the most popular genre for films that different producers demand successful actors specialised in that specific genre. Ratio of popularity in Adult films increases the probability in collaborating in numerous new Adult films, hence increasing the degree.**
+
+```{r}
+top_degree <- head(ultimate_dataframe[order(-ultimate_dataframe[,3]),],20)
+top_degree
+```
+
+
+Obtain the list of the 20 actors with the largest betweenness centrality. Show a list with the betweenness, the name of the actor, the number of movies, the main genre, and the number of genres in which the actor has participated.
+
+*10) Who is the actor with highest betweenes?*
+<center>
+The actor with the highest betweenness centrality is **`r top_betweenness[1,2]`**
+</center>
+
+*11) How do you explain the high betweenness of the top-20 list?*
+
+**This actually makes sense, all the actors below have been featured in lots of films in different genres. This makes them a node that are centric to various genre classifications. If the number of films for each genre is balanced, then the higher betweeness the user will have. For the actors case, the broader the variety of genres the actors plays in and the proportion of films between genres is balanced, the higher the betweeness score.**
+
+
+```{r}
+top_betweenness <- head(ultimate_dataframe[order(-ultimate_dataframe[,4]),],20)
+top_betweenness
+```
+
+Obtain the list of the 20 actors with the largest closeness centrality. Show a list with the closeness the name of the actor, the number of movies, the main genre, and the number of genres in which the actor has participated.
+
+*12) Who is the actor with highest closeness centrality?*
+<center>
+The actor with the highest closeness centrality is **`r top_closeness[1,2]`**
+</center>
+
+*13) How do you explain the high closeness of the top-20 list? *
+
+**Many of the actors below are the most famous actors in the world. This means that the top-20 closeness list comes from the most popular films, producers and the most popular actors, meaning that the best actors stay closer between them and the worst ones (less known producers, films and unpopular actors) are far away from the popular nodes in the network.**
+
+```{r}
+top_closeness <- head(ultimate_dataframe[order(-ultimate_dataframe[,5]),],20)
+top_closeness
+```
+
+
+# Network Models (Optional)
+Explore the Erdös-Renyi model and compare its structural properties to those of real-world networks (actors):
+
+* Degree distribution  P(k)
+
+Erdos follows a binomial distribution in which the sum of the probabilities has to be equal to 1. In order rto calculate the probability there are some parameters which we must know. We have p (probability that two nodes share a connection between them) or M (total number of connections within the graph). This is purposely done to know the probability that a node has a k degree. Note: binomial is used however depending on the case it can be used poisson or normal distribution.
+
+Erdos if we compare it to real networks is a poor predictor. This is because these models have exponential decay. However, real networks decay much slower than exponential degree distributions.
+
+* Network Diameter and Average Path Length
+
+- Diameter and average path length: 
+
+This is expressed as logN/logz. The Erdos model is a good predictor for diameter and average path length, in this case as it counts with smaller diameters and therefore captures "small world networks" (shortest-path between nodes increases slowly as the number of nodes increases). Therefore it is able to identify a shorter path compared to real-world networks.
+
+* (Global and Local) Clustering Coefficient
+
+Global clustering coefficient is the number of closed triplets (or 3x triangles) over the total number of triplets (both open and close) (http://www2.unb.ca/~ddu/6634/Lecture_notes/Lec3_network_statistics_handout.pdf). 
+
+As the local clustering coefficient is equal to p, the networks produced cannot be considered as a strong predictor due to the fact that they are too small and too close to the edge density (since the clustering coefficients are underestimated compared to highly clustered real world networks).
+
+
+In slide 49 there is a chart with the differences between the real networks and ER (http://www2.unb.ca/~ddu/6634/Lecture_notes/Lec3_network_statistics_handout.pdf)
+
+# Comunity detection (Optional)
+Use any community detection algorithm for the actors' network and discuss whether the communities found make sense according to the vertex labels.
+
+For this section I will be using the Louvian clustering algorithm which is used for community detection (https://www.r-bloggers.com/2020/03/community-detection-with-louvain-and-infomap/). However, I have realised that ploting this is an error due to the number of nodes that we have in this dataset. It is therefore that I am taking a different approach and will be using Keith McNulty code which will help us answer different questions regarding community detection (https://towardsdatascience.com/community-detection-in-r-using-communities-of-friends-characters-2161e845c198). 
+
+```{r}
+lc <- cluster_louvain(graph_actors_edges, weights = E(graph_actors_edges)$weight)
+
+# How many communities have been assigned with our community detection? We have identified 62 communities by using the Louvian community detection
+com <- as.data.frame(communities(lc))
+#print(count(com)[1])
+
+# Ploting communities and nodes, however it is very difficult to visualise. This is a mess, therefore I will use an internet source that will help me to analyse the communities
+#plot(lc,graph_actors_edges)
+```
+
+Given that plotting nodes and edges wont give us a feel of the dataset and the different categories, we will analyse 2 main things:
+
+ 1. The most important actor within each community and the number of actors in each community.
+ 2. The top 5 actors in the most important communities.
+ 
+By doing this we will have a better feel of the different 62 different commnunities and if they actually make sense. 
+
+```{r}
+#We are checking which are the unique communities that we have in this dataset
+graph_actors_edges$community <- lc$membership
+unique(graph_actors_edges$community)
+
+#This section will create a dataframe in which we can see the distribution of actors spread across different communities
+communities <- data.frame()
+for (i in unique(graph_actors_edges$community)) {
+  
+  subgraph <- induced_subgraph(graph_actors_edges, v=which(graph_actors_edges$community == i))
+  size <- gorder(subgraph)
+  btwn <- betweenness(subgraph)
+
+  communities <- communities %>% bind_rows(data.frame(community = i, n_characters = size, most_important = names(which(btwn == max(btwn)))))
+}
+
+#I am making the dataframe more user friendly to extract interpretations
+most_important_actors <- communities %>% select(community, n_characters, most_important)
+most_important_actors <- merge(most_important_actors,actors_keys, by.x="most_important", by.y="id", all.x=T)
+most_important_actors <- most_important_actors %>% select(name, community, n_characters) %>% rename(most_important_actors_community=name, n_actors_community=n_characters)
+
+#I am sorting the "n_actors_community" column so we have the biggest communities at the top
+most_important_actors[order(-most_important_actors[,3]),]
+
+#Mean "n_actors_community" column
+mean(most_important_actors$n_actors_community)
+```
+
+As we can see above, we have extracted the most important actor within the community and the total amount of actors in each community. As it wouldn't be worth analysing all the communities, I have decided to analyse those that are above the mean of "n-actors_community". So instead of analysing the smaller communities that are meaningless in terms of analysis, we will analyse those that have stronger communities.
+
+```{r}
+# I am creating the top 5 actors for each community that has more than 220 actors in their community (mean of "n_actors_community")
+top_five <- data.frame()
+for (i in unique(graph_actors_edges$community)) { 
+  # create subgraphs for each community 
+  subgraph <- induced_subgraph(graph_actors_edges, v = which(graph_actors_edges$community == i)) 
+  # for larger communities 
+  if (gorder(subgraph) > 220) { 
+    # get degree 
+    degree <- degree(subgraph) 
+    # get top five degrees 
+    top <- names(head(sort(degree, decreasing = TRUE), 5)) 
+    result <- data.frame(community = i, rank = 1:5, character = top) 
+  } else { 
+    result <- data.frame(community = NULL, rank = NULL, character = NULL) 
+  } 
+  top_five <- top_five %>% bind_rows(result) 
+} 
+
+# I am making the dataframe more user friendly to extract interpretations
+top_five <- merge(top_five,actors_keys, by.x="character", by.y="id", all.x=T)
+top_five <- top_five %>% select(community,rank,name) %>% rename(character=name)
+top_five <- top_five %>% pivot_wider(names_from = rank, values_from = character) 
+top_five <- top_five %>% select("community","1","2","3","4","5")
+top_five
+```
+
+As we can see above, the largest communities dont follow a correlation in terms of "main_genre" (communities 36 and 20). Therefore, the categorisation is not based on degree, but based on the strength of their connection and the highest degree. 
